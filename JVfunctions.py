@@ -284,3 +284,163 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
     print('Measurement complete')
     print('Files saved: ')
     print(filename)
+
+####################################
+#MPPT function that takes JV scans during in the middle of the scan to measure degradation  
+def JVMPPT(plc,averages, data_points, i_volt, timedelay,v_in, v_fin, bufdelay, prebias):
+    
+    #define some variables and get current date and time
+    bufdelay=0.1 # delay time to ensure there is enough time to communicate with SMU
+    i_volt=0.001 #initial guess voltage, can be changed to start mppt scan at fwd bias or near mppt instead of near 0
+    now = datetime.datetime.now()                  #Get date and time
+    currtime = now.strftime("%m%d%y%H%M")          #get formatted time
+    foldtime = now.strftime("%m-%d-%y")
+
+    
+    # Connect and configure the instrument
+    sourcemeter = Keithley2400('GPIB0::24::INSTR') #Connect 
+    sourcemeter.reset()
+    sourcemeter.use_front_terminals()
+    sourcemeter.compliance_voltage = 2        # Sets the compliance voltage to 2V
+
+    sourcemeter.apply_voltage()
+    sourcemeter.measure_current(nplc=plc, current=1e-2, auto_range=True)
+
+    sleep(bufdelay) # wait here to give the instrument time to react
+    sourcemeter.config_buffer(averages,bufdelay)
+
+
+
+    #set voltage to initial voltage setpoint
+    volt=i_volt
+    sourcemeter.source_voltage = volt
+
+    pval=0.1 #initial value for power
+    pscale=0.01 #scaling factor
+    scale=0.01 #scaling factor
+
+    sourcemeter.enable_source()  
+    voltnew=volt
+    start_time = time() # get start time of measurement for time tracking
+
+    try: #inside a try loop so you can interrupt the kernel and still save the current measurement
+        while True: #This makes the mppt scan go until you press abort, you could set it to do a number of scans instead
+            sourcemeter.enable_source() # enable source
+            
+            # Allocate arrays to store the measurement results
+            voltages = []
+            currents =  []
+            current_stds = [] 
+            powers= []
+            meas_num=[]
+
+            sourcemeter.source_voltage = volt
+
+            pval=0.1
+            pscale=0.01
+            scale=0.01 #this value scales the random number the voltage is scaled by: smaller number will result in more stable mppt but slower time to reach mppt
+            sourcemeter.enable_source()  
+            voltnew=volt
+            now = datetime.datetime.now()
+            currtime = now.strftime("%m%d%y%H%M")
+
+
+            for i in range(data_points):
+                direc = 'C:/Users/IECs Finest/Desktop/Jupyter/MPPT/'
+                os.chdir(direc)
+                now = datetime.datetime.now()                  #Get date and time
+                currtime = now.strftime("%m%d%y%H%M")          #get formatted time
+                foldtime = now.strftime("%m-%d-%y")
+                if os.path.isdir(foldtime) is False:
+                    os.mkdir(foldtime)
+                os.chdir(foldtime)
+
+                if os.path.isdir(cell_name) is False:
+                    os.mkdir(cell_name)
+                os.chdir(cell_name)
+                
+                
+                random_val=scale*np.random.rand(1).tolist()[0] #a random value to increase the voltage set point between 0 and 10mV
+                 #increase new voltage based on random number
+                sourcemeter.source_voltage=voltnew #set voltage
+                sourcemeter.reset_buffer() #reset buffer
+                sleep(bufdelay)                  #wait
+                sourcemeter.start_buffer()  
+                sleep(bufdelay)
+
+                # Record the average and standard deviation
+                voltages.append(voltnew) #record the voltage the cell is at
+                currents.append(sourcemeter.means[1]*1000/cell_area) #record the average current measurement of the number of averages
+                current_stds.append(sourcemeter.standard_devs[1]) #record the standard deviation
+                powers.append(currents[i]*voltnew*-1) #calculate and record the power
+                pvalnew=powers[i] #update pval to calculate the scaling factor
+                pscale=pvalnew-pval #the difference in power from the last to new measurement, tells wether the voltage iteration made power higher or lower
+                vscale=voltnew-volt #the difference in voltage from last to new measurement, telling whether you increased or decreased the voltga
+                sleep(timedelay) #allows you to slow down measurements by adding a wait time (you will get fewer points)
+                meas_num.append(time()-start_time) #record the time since the measurement started
+                volt=voltnew #update the old voltage with the new voltage since the measurement cycle is over
+                
+                #control algorithm using the perturb and observe method
+                if pscale>0:
+                    if vscale>0:
+                        voltnew=volt+random_val
+                    else:
+                        voltnew=volt-random_val
+                elif pscale<0:
+                    if vscale>0:
+                        voltnew=volt-random_val
+                    else:
+                        voltnew=volt+random_val
+                else:
+                    voltnew=volt
+                pval=pvalnew
+                print('Pmax = '+str(round(pval,3))+'%'+'                        ',end='\r') #prints the power
+                JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias)
+
+
+
+            sourcemeter.shutdown() #shuts down source at end of measurement 
+            tempdict = {
+                        'Measurement_Number' : meas_num,
+                        'Voltage' : voltages,
+                        'Currents' : currents,
+                        'current_stds' : current_stds,
+                        'powers' : powers
+                    } #put arrays of values in a temporary dictionary to save data
+            data=pd.DataFrame(tempdict) #put into a pandas dataframe to save data
+
+            filename= currtime+'_'+str(cell_name)+'MPPT'+'.csv' #define file name
+            data.to_csv(filename) #save file
+            sleep(1)
+            
+    except:
+        KeyboardInterrupt #this is so the data will save for the current scan you're doing when you interrupt the kernel
+        print('Interrupted                      ')
+        if len(meas_num)<len(voltages):
+            meas_num.append(time()-start_time)
+        if len(currents)<len(voltages):
+            currents.append(np.nan)
+        if len(current_stds)<len(currents):
+            current_stds.append(np.nan)
+        if len(powers)<len(current_stds):
+            powers.append(np.nan)
+
+        sourcemeter.shutdown()  
+        tempdict = {
+                    'Measurement_Number' : meas_num,
+                    'Voltage' : voltages,
+                    'Currents' : currents,
+                    'current_stds' : current_stds,
+                    'powers' : powers
+                }
+        data=pd.DataFrame(tempdict)
+
+        filename= currtime+'_'+str(cell_name)+'MPPT'+'.csv'
+        data.to_csv(filename)
+    plt.scatter(tempdict['Measurement_Number'],tempdict['powers'])
+
+
+
+    print('Measurement complete')
+    print('Files saved: ')
+    print(filename)
