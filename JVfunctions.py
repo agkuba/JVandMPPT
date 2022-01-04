@@ -10,7 +10,7 @@ import datetime
 import os
 
 
-print('test')
+print('JVfunctions Loaded Without Error')
 
 
 ##Basic JV scan function
@@ -136,7 +136,7 @@ def JVscan(cell_name, cell_area, v_in, v_fin, averages, data_points, plc, bufdel
 
 ################################################################################################################
 #MPPT function
-def MPPT(plc,averages, data_points, i_volt, timedelay):
+def MPPT(cell_name,cell_area,plc,averages, data_points, i_volt, timedelay):
     
     #define some variables and get current date and time
     bufdelay=0.1 # delay time to ensure there is enough time to communicate with SMU
@@ -175,7 +175,7 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
     try: #inside a try loop so you can interrupt the kernel and still save the current measurement
         while True: #This makes the mppt scan go until you press abort, you could set it to do a number of scans instead
             sourcemeter.enable_source() # enable source
-            
+
             # Allocate arrays to store the measurement results
             voltages = []
             currents =  []
@@ -207,8 +207,8 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
                 if os.path.isdir(cell_name) is False:
                     os.mkdir(cell_name)
                 os.chdir(cell_name)
-                
-                
+
+
                 random_val=scale*np.random.rand(1).tolist()[0] #a random value to increase the voltage set point between 0 and 10mV
                  #increase new voltage based on random number
                 sourcemeter.source_voltage=voltnew #set voltage
@@ -228,7 +228,7 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
                 sleep(timedelay) #allows you to slow down measurements by adding a wait time (you will get fewer points)
                 meas_num.append(time()-start_time) #record the time since the measurement started
                 volt=voltnew #update the old voltage with the new voltage since the measurement cycle is over
-                
+
                 #control algorithm using the perturb and observe method
                 if pscale>0:
                     if vscale>0:
@@ -262,7 +262,7 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
             sleep(1)
             
     except:
-        KeyboardInterrupt #this is so the data will save for the current scan you're doing when you interrupt the kernel
+        #KeyboardInterrupt #this is so the data will save for the current scan you're doing when you interrupt the kernel
         print('Interrupted                      ')
         if len(meas_num)<len(voltages):
             meas_num.append(time()-start_time)
@@ -295,7 +295,7 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
 
 ################################################################################################################
 #MPPTJV function
-def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v_in, v_fin, bufdelay, prebias, pulse, pulsedelay):
+def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v_in, v_fin, bufdelay, prebias, biasV, biastime, pulse, pulsedelay):
     
     #define some variables and get current date and time
     bufdelay=0.1 # delay time to ensure there is enough time to communicate with SMU
@@ -334,7 +334,7 @@ def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v
     try: #inside a try loop so you can interrupt the kernel and still save the current measurement
         while True: #This makes the mppt scan go until you press abort, you could set it to do a number of scans instead
             sourcemeter.enable_source() # enable source
-            
+
             # Allocate arrays to store the measurement results
             voltages = []
             currents =  []
@@ -366,8 +366,8 @@ def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v
                 if os.path.isdir(cell_name) is False:
                     os.mkdir(cell_name)
                 os.chdir(cell_name)
-                
-                
+
+
                 random_val=scale*np.random.rand(1).tolist()[0] #a random value to increase the voltage set point between 0 and 10mV
                  #increase new voltage based on random number
                 sourcemeter.source_voltage=voltnew #set voltage
@@ -387,7 +387,7 @@ def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v
                 sleep(timedelay) #allows you to slow down measurements by adding a wait time (you will get fewer points)
                 meas_num.append(time()-start_time) #record the time since the measurement started
                 volt=voltnew #update the old voltage with the new voltage since the measurement cycle is over
-                
+
                 #control algorithm using the perturb and observe method
                 if pscale>0:
                     if vscale>0:
@@ -403,7 +403,7 @@ def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v
                     voltnew=volt
                 pval=pvalnew
                 print('Pmax = '+str(round(pval,3))+'%'+'                        ',end='\r') #prints the power
-                JVscan(cell_name, cell_area, v_in, v_fin, averages, data_points, plc, bufdelay, prebias, pulse, pulsedelay)
+
 
 
             sourcemeter.shutdown() #shuts down source at end of measurement 
@@ -418,6 +418,7 @@ def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v
 
             filename= currtime+'_'+str(cell_name)+'MPPT'+'.csv' #define file name
             data.to_csv(filename) #save file
+            JVscan(cell_name, cell_area, v_in, v_fin, averages, data_points, plc, bufdelay, prebias, biasV, biastime, pulse, pulsedelay)
             sleep(1)
             
     except:
