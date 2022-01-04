@@ -11,11 +11,12 @@ import os
 
 
 print('test')
-# #Basic JV scan function
 
+
+##Basic JV scan function
 #############################################################################
 #define function with inputs
-def JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias):
+def JVscan(cell_name, cell_area, v_in, v_fin, averages, data_points, plc, bufdelay, prebias, biasV, biastime, pulse, pulsedelay):
     direc = 'C:/Users/IECs Finest/Desktop/Jupyter/JV/'
     os.chdir(direc)
     now = datetime.datetime.now()                  #Get date and time
@@ -65,8 +66,8 @@ def JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias):
     #Prebias the cell for steady state or bias pretreatment
     if prebias== True:
         print('Prebiasing at ')
-        print(v_fin)
-        sourcemeter.source_voltage= v_fin                #prebias at "final voltage"
+        print(str(biasV)+' volts')
+        sourcemeter.source_voltage= biasV                #prebias at "final voltage"
         sourcemeter.measure_current(nplc=plc, current=1e-2, auto_range=True) #set meter to measure current
         sleep(biastime)
     
@@ -87,6 +88,10 @@ def JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias):
         currentdown_stds.append(sourcemeter.standard_devs[1]/cell_area)
         #Calculate the power (which in this case is equal to efficiency)
         powerdown.append(voltagedown[i]*sourcemeter.means[1]/cell_area*-1000)
+        if pulse==True:
+            sourcemeter.source_voltage = biasV
+            sourcemeter.measure_current(nplc=plc, current=1e-2,auto_range=True)
+            sleep(pulsedelay)
     
     # Loop through each voltage point, measure and record the current density
     print('Scan Up')
@@ -100,10 +105,13 @@ def JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias):
 
         # Record the average and standard deviation of the current density
         currentup.append(sourcemeter.means[1]/cell_area)
-        currentup_stds.append(sourcemeter.standard_devs[1])
+        currentup_stds.append(sourcemeter.standard_devs[1]/cell_area)
         #Calculate the power (which in this case is equal to efficiency)
-        powerup.append(voltageup[i]*currentup[i]*-1000)
-
+        powerup.append(voltageup[i]*sourcemeter.means[1]*-1000/cell_area)
+        if pulse==True:
+            sourcemeter.source_voltage = biasV
+            sourcemeter.measure_current(nplc=plc, current=1e-2,auto_range=True)
+            sleep(pulsedelay)
 
     data1 = pd.DataFrame({
         'Currentup (A)': currentup,
@@ -126,13 +134,13 @@ def JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias):
 #JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias)
 
 
-####################################
+################################################################################################################
 #MPPT function
 def MPPT(plc,averages, data_points, i_volt, timedelay):
     
     #define some variables and get current date and time
     bufdelay=0.1 # delay time to ensure there is enough time to communicate with SMU
-    i_volt=0.001 #initial guess voltage, can be changed to start mppt scan at fwd bias or near mppt instead of near 0
+    #i_volt=0.001 #initial guess voltage, can be changed to start mppt scan at fwd bias or near mppt instead of near 0
     now = datetime.datetime.now()                  #Get date and time
     currtime = now.strftime("%m%d%y%H%M")          #get formatted time
     foldtime = now.strftime("%m-%d-%y")
@@ -285,13 +293,13 @@ def MPPT(plc,averages, data_points, i_volt, timedelay):
     print('Files saved: ')
     print(filename)
 
-####################################
-#MPPT function that takes JV scans during in the middle of the scan to measure degradation  
-def JVMPPT(plc,averages, data_points, i_volt, timedelay,v_in, v_fin, bufdelay, prebias):
+################################################################################################################
+#MPPTJV function
+def MPPTJV(plc,averages, data_points, i_volt, timedelay, cell_name, cell_area, v_in, v_fin, bufdelay, prebias, pulse, pulsedelay):
     
     #define some variables and get current date and time
     bufdelay=0.1 # delay time to ensure there is enough time to communicate with SMU
-    i_volt=0.001 #initial guess voltage, can be changed to start mppt scan at fwd bias or near mppt instead of near 0
+    #i_volt=0.001 #initial guess voltage, can be changed to start mppt scan at fwd bias or near mppt instead of near 0
     now = datetime.datetime.now()                  #Get date and time
     currtime = now.strftime("%m%d%y%H%M")          #get formatted time
     foldtime = now.strftime("%m-%d-%y")
@@ -395,8 +403,7 @@ def JVMPPT(plc,averages, data_points, i_volt, timedelay,v_in, v_fin, bufdelay, p
                     voltnew=volt
                 pval=pvalnew
                 print('Pmax = '+str(round(pval,3))+'%'+'                        ',end='\r') #prints the power
-                JVscan(v_in, v_fin, averages, data_points, plc, bufdelay, prebias)
-
+                JVscan(cell_name, cell_area, v_in, v_fin, averages, data_points, plc, bufdelay, prebias, pulse, pulsedelay)
 
 
             sourcemeter.shutdown() #shuts down source at end of measurement 
@@ -444,3 +451,4 @@ def JVMPPT(plc,averages, data_points, i_volt, timedelay,v_in, v_fin, bufdelay, p
     print('Measurement complete')
     print('Files saved: ')
     print(filename)
+
